@@ -4,7 +4,7 @@
 #### • Provide functions to provide access to data within a file, given the file’s inode.
 ### Details
 #### In this step, we provide access to a file’s data, enabling read and write access to a file. Note that this includes directories, which are just files with a bit set in the file’s inode to indicate it is a directory and not a data file.
-### Block-level file acces
+### Block-level file access
 #### At the core of the file access functions is the ability to read or write one entire block in the file. This isn’t as simple as using fetchBlock() or writeBlock(); the blocks are numbered sequentially, but the numbers reflect a position within the file, not their position in the filesystem. In other words, block 0 is the first block of the file’s data, block 1 is the second block of file data, and so on
 #### To provide block-level access, we need two functions:
 ##### • int32_t fetchBlockFromFile(struct Inode *i, uint32_t bNum, void *buf)
