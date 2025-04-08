@@ -1,132 +1,78 @@
 #include "file_access.h"
 #include "ext2.h"
+#include "inode.h"
 #include <stdlib.h>
-#include <string.h>
 
 #define BLOCK_SIZE 1024 // Assuming a block size of 1024 bytes
 
-int32_t fetchBlockFromFile(Inode *inode, uint32_t bNum, void *buf) {
-    uint32_t k = BLOCK_SIZE / 4;
-    uint32_t *blockList;
-    uint8_t tmpBuf[BLOCK_SIZE];
-
+int32_t fetchBlockFromFile(Ext2File *f, Inode *i, uint32_t bNum, void *buf) {
+    uint32_t blockNum;
     if (bNum < 12) {
-        blockList = inode->i_block;
-        goto direct;
-    } else if (bNum < 12 + k) {
-        if (inode->i_block[12] == 0) return -1;
-        fetchBlock(inode->i_block[12], tmpBuf);
-        blockList = (uint32_t *)tmpBuf;
-        bNum -= 12;
-        goto direct;
-    } else if (bNum < 12 + k + k * k) {
-        if (inode->i_block[13] == 0) return -1;
-        fetchBlock(inode->i_block[13], tmpBuf);
-        blockList = (uint32_t *)tmpBuf;
-        bNum -= 12 + k;
-        goto single;
+        // Direct block
+        blockNum = i->i_block[bNum];
     } else {
-        if (inode->i_block[14] == 0) return -1;
-        fetchBlock(inode->i_block[14], tmpBuf);
-        blockList = (uint32_t *)tmpBuf;
-        bNum -= 12 + k + k * k;
+        uint32_t k = f->block_size / 4;
+        if (bNum < 12 + k) {
+            // Single indirect block
+            if (i->i_block[12] == 0) return -1;
+            uint32_t singleIndirectBlock[k];
+            if (!fetchBlock(f, i->i_block[12], singleIndirectBlock)) return -1;
+            blockNum = singleIndirectBlock[bNum - 12];
+        } else if (bNum < 12 + k + k * k) {
+            // Double indirect block
+            if (i->i_block[13] == 0) return -1;
+            uint32_t doubleIndirectBlock[k];
+            if (!fetchBlock(f, i->i_block[13], doubleIndirectBlock)) return -1;
+            uint32_t singleIndirectBlock[k];
+            if (!fetchBlock(f, doubleIndirectBlock[(bNum - 12 - k) / k], singleIndirectBlock)) return -1;
+            blockNum = singleIndirectBlock[(bNum - 12 - k) % k];
+        } else {
+            // Triple indirect block
+            if (i->i_block[14] == 0) return -1;
+            uint32_t tripleIndirectBlock[k];
+            if (!fetchBlock(f, i->i_block[14], tripleIndirectBlock)) return -1;
+            uint32_t doubleIndirectBlock[k];
+            if (!fetchBlock(f, tripleIndirectBlock[(bNum - 12 - k - k * k) / (k * k)], doubleIndirectBlock)) return -1;
+            uint32_t singleIndirectBlock[k];
+            if (!fetchBlock(f, doubleIndirectBlock[(bNum - 12 - k - k * k) % (k * k) / k], singleIndirectBlock)) return -1;
+            blockNum = singleIndirectBlock[(bNum - 12 - k - k * k) % k];
+        }
     }
-
-    // Fetching from double indirect block
-    index = bNum / (k * k);
-    bNum %= (k * k);
-    if (blockList[index] == 0) return -1;
-    fetchBlock(blockList[index], tmpBuf);
-    blockList = (uint32_t *)tmpBuf;
-
-single:
-    // Fetching from single indirect block
-    index = bNum / k;
-    bNum %= k;
-    if (blockList[index] == 0) return -1;
-    fetchBlock(blockList[index], tmpBuf);
-    blockList = (uint32_t *)tmpBuf;
-
-direct:
-    // Fetching from direct block
-    if (blockList[bNum] == 0) return -1;
-    fetchBlock(blockList[bNum], buf);
-    return 0;
+    return fetchBlock(f, blockNum, buf) ? 0 : -1;
 }
 
-int32_t writeBlockToFile(Inode *inode, uint32_t bNum, void *buf) {
-    uint32_t k = BLOCK_SIZE / 4;
-    uint32_t *blockList;
-    uint8_t tmpBuf[BLOCK_SIZE];
-    uint32_t ibNum;
-
+int32_t writeBlockToFile(Ext2File *f, Inode *i, uint32_t bNum, void *buf) {
+    uint32_t blockNum;
     if (bNum < 12) {
-        blockList = inode->i_block;
-        if (blockList[bNum] == 0) {
-            blockList[bNum] = Allocate();
-            writeInode(inode);
-        }
-        goto direct;
-    } else if (bNum < 12 + k) {
-        if (inode->i_block[12] == 0) {
-            inode->i_block[12] = Allocate();
-            writeInode(inode);
-        }
-        fetchBlock(inode->i_block[12], tmpBuf);
-        ibNum = inode->i_block[12];
-        blockList = (uint32_t *)tmpBuf;
-        bNum -= 12;
-        goto direct;
-    } else if (bNum < 12 + k + k * k) {
-        if (inode->i_block[13] == 0) {
-            inode->i_block[13] = Allocate();
-            writeInode(inode);
-        }
-        fetchBlock(inode->i_block[13], tmpBuf);
-        ibNum = inode->i_block[13];
-        blockList = (uint32_t *)tmpBuf;
-        bNum -= 12 + k;
-        goto single;
+        // Direct block
+        blockNum = i->i_block[bNum];
     } else {
-        if (inode->i_block[14] == 0) {
-            inode->i_block[14] = Allocate();
-            writeInode(inode);
+        uint32_t k = f->block_size / 4;
+        if (bNum < 12 + k) {
+            // Single indirect block
+            if (i->i_block[12] == 0) return -1;
+            uint32_t singleIndirectBlock[k];
+            if (!fetchBlock(f, i->i_block[12], singleIndirectBlock)) return -1;
+            blockNum = singleIndirectBlock[bNum - 12];
+        } else if (bNum < 12 + k + k * k) {
+            // Double indirect block
+            if (i->i_block[13] == 0) return -1;
+            uint32_t doubleIndirectBlock[k];
+            if (!fetchBlock(f, i->i_block[13], doubleIndirectBlock)) return -1;
+            uint32_t singleIndirectBlock[k];
+            if (!fetchBlock(f, doubleIndirectBlock[(bNum - 12 - k) / k], singleIndirectBlock)) return -1;
+            blockNum = singleIndirectBlock[(bNum - 12 - k) % k];
+        } else {
+            // Triple indirect block
+            if (i->i_block[14] == 0) return -1;
+            uint32_t tripleIndirectBlock[k];
+            if (!fetchBlock(f, i->i_block[14], tripleIndirectBlock)) return -1;
+            uint32_t doubleIndirectBlock[k];
+            if (!fetchBlock(f, tripleIndirectBlock[(bNum - 12 - k - k * k) / (k * k)], doubleIndirectBlock)) return -1;
+            uint32_t singleIndirectBlock[k];
+            if (!fetchBlock(f, doubleIndirectBlock[(bNum - 12 - k - k * k) % (k * k) / k], singleIndirectBlock)) return -1;
+            blockNum = singleIndirectBlock[(bNum - 12 - k - k * k) % k];
         }
-        fetchBlock(inode->i_block[14], tmpBuf);
-        ibNum = inode->i_block[14];
-        blockList = (uint32_t *)tmpBuf;
-        bNum -= 12 + k + k * k;
     }
-
-    // Fetching from double indirect block
-    index = bNum / (k * k);
-    bNum %= (k * k);
-    if (blockList[index] == 0) {
-        blockList[index] = Allocate();
-        writeBlock(ibNum, blockList);
-    }
-    ibNum = blockList[index];
-    fetchBlock(blockList[index], tmpBuf);
-    blockList = (uint32_t *)tmpBuf;
-
-single:
-    // Fetching from single indirect block
-    index = bNum / k;
-    bNum %= k;
-    if (blockList[index] == 0) {
-        blockList[index] = Allocate();
-        writeBlock(ibNum, blockList);
-    }
-    ibNum = blockList[index];
-    fetchBlock(blockList[index], tmpBuf);
-    blockList = (uint32_t *)tmpBuf;
-
-direct:
-    // Fetching from direct block
-    if (blockList[bNum] == 0) {
-        blockList[bNum] = Allocate();
-        writeBlock(ibNum, blockList);
-    }
-    writeBlock(blockList[bNum], buf);
-    return 0;
+    return writeBlock(f, blockNum, buf) ? 0 : -1;
 }
