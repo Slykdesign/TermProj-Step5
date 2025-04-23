@@ -5,7 +5,7 @@
 
 #define BLOCK_SIZE 1024 // Assuming a block size of 1024 bytes
 
-int32_t fetchBlockFromFile(Ext2File *f, Inode *i, uint32_t bNum, void *buf) {
+int32_t fetchBlockFromFile(struct Ext2File *f, Inode *i, uint32_t bNum, void *buf) {
     uint32_t blockNum;
     if (bNum < 12) {
         // Direct block
@@ -41,7 +41,7 @@ int32_t fetchBlockFromFile(Ext2File *f, Inode *i, uint32_t bNum, void *buf) {
     return fetchBlock(f, blockNum, buf) ? 0 : -1;
 }
 
-int32_t writeBlockToFile(Ext2File *f, Inode *i, uint32_t bNum, void *buf) {
+int32_t writeBlockToFile(struct Ext2File *f, Inode *i, uint32_t bNum, void *buf) {
     uint32_t blockNum;
     if (bNum < 12) {
         // Direct block
