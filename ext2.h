@@ -3,10 +3,10 @@
 
 #include "partition.h"
 #include <stdint.h>
-#include <stdbool.h>
 
 #define EXT2_SUPERBLOCK_OFFSET 1024  // Offset of the superblock in bytes
 #define EXT2_SUPERBLOCK_SIZE sizeof(Ext2Superblock)  // Size of the superblock structure
+#define EXT2_SUPER_MAGIC 0xEF53
 
 typedef struct {
     uint32_t s_inodes_count;
@@ -71,12 +71,16 @@ typedef struct {
 } Ext2BlockGroupDescriptor;
 
 struct Ext2File {
-    int fd;
+    FILE *fd;
+    VDIFile *vdi;
     MBRPartition *partition;
-    uint32_t blockSize;
-    uint32_t numBlockGroups;
+    uint64_t partitionOffset; // Start of ext2 partition in bytes
     Ext2Superblock superblock;
     Ext2BlockGroupDescriptor *bgdt;
+    uint32_t blockSize;
+    uint32_t numBlockGroups;
+    uint8_t *cache; // Optional: Block cache
+    uint32_t firstSector;
 };
 
 struct Ext2File *openExt2(char *fn);
