@@ -7,8 +7,8 @@
 #include <time.h>
 
 #define SECTOR_SIZE 512
-#define EXT2_MAGIC_NUMBER 0xEF53
-#define EXT2_PARTITION_TYPE 0x0
+#define EXT2_SUPER_MAGIC 0xEF53
+#define EXT2_PARTITION_TYPE 0x83
 
 struct Ext2File *openExt2(char *fn) {
     struct Ext2File *ext2 = malloc(sizeof(struct Ext2File));
@@ -50,9 +50,7 @@ struct Ext2File *openExt2(char *fn) {
     closePartition(ext2->partition);
     ext2->partition = tempPartition;
 
-    off_t superblockOffset = ext2->partition->startSector * SECTOR_SIZE + EXT2_SUPERBLOCK_OFFSET;
-
-    if (vdiSeekPartition(ext2->partition, superblockOffset, SEEK_SET) != superblockOffset) {
+    if (vdiSeekPartition(ext2->partition, EXT2_SUPERBLOCK_OFFSET, SEEK_SET) != EXT2_SUPERBLOCK_OFFSET) {
         printf("Failed to seek to superblock in partition %d.\n", partIndex);
         closePartition(ext2->partition);
         free(ext2);
@@ -66,7 +64,7 @@ struct Ext2File *openExt2(char *fn) {
         return NULL;
     }
 
-    if (ext2->superblock.s_magic != EXT2_MAGIC_NUMBER) {
+    if (ext2->superblock.s_magic != EXT2_SUPER_MAGIC) {
         printf("Invalid superblock magic number (0x%X).\n", ext2->superblock.s_magic);
         closePartition(ext2->partition);
         free(ext2);
@@ -105,7 +103,7 @@ void closeExt2(struct Ext2File *f) {
 }
 
 bool fetchBlock(struct Ext2File *f, uint32_t blockNum, void *buf) {
-    uint64_t offset = (blockNum + f->superblock.s_first_data_block) * f->blockSize;
+    uint64_t offset = blockNum * f->blockSize;
     if (vdiSeekPartition(f->partition, offset, SEEK_SET) != offset) {
         printf("Failed to seek to block %u\n", blockNum);
         return false;
@@ -214,7 +212,7 @@ bool writeSuperblock(struct Ext2File *f, uint32_t blockNum, Ext2Superblock *sb) 
         memcpy(&verifySB, verifyBuf, sizeof(Ext2Superblock));
         free(verifyBuf);
 
-        if (verifySB.s_magic != EXT2_MAGIC_NUMBER) {
+        if (verifySB.s_magic != EXT2_SUPER_MAGIC) {
             printf("Invalid backup superblock after writing: 0x%x\n", verifySB.s_magic);
             free(buf);
             return false;
